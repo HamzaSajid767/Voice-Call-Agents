@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Private tool zip packages + Payoneer payment proofs (not served as static files)
+private-uploads/
+
+# Build / output
+dist/
+build/
+out/
+
+# Coverage
+coverage/
+
+# IDE (uncomment if you don't want to share)
+# .idea/
+# .vscode/
+# *.swp
+# *.swo
+
+# Environment files (secrets) — never commit
+.env
+.env.*
