@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New tour interest</title>
+</head>
+<body style="font-family: sans-serif; line-height: 1.5; color: #333;">
+  <h2>New tour interest submitted</h2>
+  <p>A new interest form has been submitted.</p>
+  <ul>
+    <li><strong>Tour:</strong> <%= tourId %></li>
+    <li><strong>Name:</strong> <%= name %> <%= surname %></li>
+    <li><strong>Email:</strong> <%= email %></li>
+    <li><strong>Phone:</strong> <%= phone || '—' %></li>
+    <li><strong>Number of persons:</strong> <%= numberOfPersons %></li>
+    <% if (comments) { %><li><strong>Comments:</strong> <%= comments %></li><% } %>
+  </ul>
+</body>
+</html>
