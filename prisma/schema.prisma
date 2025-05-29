@@ -1,0 +1,310 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
+}
+
+enum AgentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum PhoneNumberStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PhoneProvider {
+  TWILIO
+  SIP
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallSessionStatus {
+  INITIATED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  NO_ANSWER
+  CANCELED
+}
+
+enum CallEventType {
+  SESSION_CREATED
+  TWILIO_WEBHOOK_RECEIVED
+  LIVEKIT_ROOM_CREATED
+  AGENT_JOIN_REQUESTED
+  CALL_STATUS_UPDATED
+  TRANSCRIPT_SEGMENT
+  ERROR
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum UsageType {
+  CALL_MINUTE
+  STT_SECOND
+  TTS_CHARACTER
+  LLM_TOKEN
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+}
+
+model Tenant {
+  id                    String             @id @default(uuid()) @db.Uuid
+  slug                  String             @unique @db.VarChar(80)
+  name                  String             @db.VarChar(160)
+  region                String             @default("global") @db.VarChar(40)
+  defaultAgentId        String?            @map("default_agent_id") @db.Uuid
+  status                TenantStatus       @default(ACTIVE)
+  timezone              String             @default("UTC") @db.VarChar(64)
+  settings              Json?
+  encryptedBillingData  String?            @map("encrypted_billing_data")
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  users                 User[]
+  agents                Agent[]
+  defaultAgent          Agent?             @relation("TenantDefaultAgent", fields: [defaultAgentId], references: [id], onDelete: SetNull)
+  phoneNumbers          PhoneNumber[]
+  callSessions          CallSession[]
+  callEvents            CallEvent[]
+  subscriptions         Subscription[]
+  usageRecords          UsageRecord[]
+  apiKeys               APIKey[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("tenants")
+}
+
+model User {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  email                 String             @db.VarChar(255)
+  fullName              String             @map("full_name") @db.VarChar(160)
+  passwordHash          String?            @map("password_hash")
+  status                UserStatus         @default(ACTIVE)
+  isOwner               Boolean            @default(false) @map("is_owner")
+  isSuperAdmin          Boolean            @default(false) @map("is_super_admin")
+  lastLoginAt           DateTime?          @map("last_login_at") @db.Timestamptz(3)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, email])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, deletedAt])
+  @@map("users")
+}
+
+model Agent {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  name                  String             @db.VarChar(120)
+  status                AgentStatus        @default(ACTIVE)
+  systemPrompt          String             @map("system_prompt")
+  temperature           Decimal            @default(0.7) @db.Decimal(3, 2)
+  voiceConfig           Json               @map("voice_config")
+  toolConfig            Json?              @map("tool_config")
+  vectorNamespace       String?            @map("vector_namespace") @db.VarChar(120)
+  providerConfig        Json?              @map("provider_config")
+  createdByUserId       String?            @map("created_by_user_id") @db.Uuid
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  defaultForTenants      Tenant[]           @relation("TenantDefaultAgent")
+  phoneNumbers          PhoneNumber[]
+  callSessions          CallSession[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, status])
+  @@index([tenantId, deletedAt])
+  @@map("agents")
+}
+
+model PhoneNumber {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String?            @map("tenant_id") @db.Uuid
+  agentId               String?            @map("agent_id") @db.Uuid
+  e164                  String             @db.VarChar(32)
+  provider              PhoneProvider      @default(TWILIO)
+  providerSid           String?            @map("provider_sid") @db.VarChar(64)
+  isActive              Boolean            @default(true) @map("is_active")
+  metadata              Json?
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant?            @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  agent                 Agent?             @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  callSessions          CallSession[]
+
+  @@unique([e164])
+  @@index([tenantId, providerSid])
+  @@index([tenantId, isActive])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("phone_numbers")
+}
+
+model CallSession {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  phoneNumberId         String?            @map("phone_number_id") @db.Uuid
+  agentId               String?            @map("agent_id") @db.Uuid
+  direction             CallDirection
+  status                CallSessionStatus  @default(INITIATED)
+  twilioCallSid         String?            @map("twilio_call_sid") @db.VarChar(64)
+  livekitRoomName       String?            @map("livekit_room_name") @db.VarChar(120)
+  fromNumber            String?            @map("from_number") @db.VarChar(32)
+  toNumber              String?            @map("to_number") @db.VarChar(32)
+  startedAt             DateTime?          @map("started_at") @db.Timestamptz(3)
+  endedAt               DateTime?          @map("ended_at") @db.Timestamptz(3)
+  durationSeconds       Int                @default(0) @map("duration_seconds")
+  recordingUrlEncrypted String?            @map("recording_url_encrypted")
+  metadata              Json?
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  phoneNumber           PhoneNumber?       @relation(fields: [phoneNumberId], references: [id], onDelete: SetNull)
+  agent                 Agent?             @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  events                CallEvent[]
+  usageRecords          UsageRecord[]
+
+  @@unique([tenantId, twilioCallSid])
+  @@index([tenantId, direction, status])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, startedAt])
+  @@index([tenantId, endedAt])
+  @@index([tenantId, deletedAt])
+  @@map("call_sessions")
+}
+
+model CallEvent {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  callSessionId         String             @map("call_session_id") @db.Uuid
+  eventType             CallEventType      @map("event_type")
+  eventTimestamp        DateTime           @default(now()) @map("event_timestamp") @db.Timestamptz(3)
+  payload               Json?
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  callSession           CallSession        @relation(fields: [callSessionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, callSessionId, eventTimestamp])
+  @@index([tenantId, eventType, eventTimestamp])
+  @@map("call_events")
+}
+
+model Subscription {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  provider              String             @default("stripe") @db.VarChar(40)
+  externalSubscriptionId String            @map("external_subscription_id") @db.VarChar(120)
+  planCode              String             @map("plan_code") @db.VarChar(80)
+  status                SubscriptionStatus @default(TRIALING)
+  currentPeriodStart    DateTime           @map("current_period_start") @db.Timestamptz(3)
+  currentPeriodEnd      DateTime           @map("current_period_end") @db.Timestamptz(3)
+  canceledAt            DateTime?          @map("canceled_at") @db.Timestamptz(3)
+  metadata              Json?
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, externalSubscriptionId])
+  @@index([tenantId, status])
+  @@index([tenantId, currentPeriodStart, currentPeriodEnd])
+  @@index([tenantId, deletedAt])
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  callSessionId         String?            @map("call_session_id") @db.Uuid
+  usageType             UsageType          @map("usage_type")
+  quantity              Decimal            @db.Decimal(18, 6)
+  unit                  String             @db.VarChar(24)
+  unitPrice             Decimal            @map("unit_price") @db.Decimal(18, 6)
+  totalCost             Decimal            @map("total_cost") @db.Decimal(18, 6)
+  occurredAt            DateTime           @map("occurred_at") @db.Timestamptz(3)
+  metadata              Json?
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  callSession           CallSession?       @relation(fields: [callSessionId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, usageType, occurredAt])
+  @@index([tenantId, callSessionId])
+  @@index([tenantId, occurredAt])
+  @@map("usage_records")
+}
+
+model APIKey {
+  id                    String             @id @default(uuid()) @db.Uuid
+  tenantId              String             @map("tenant_id") @db.Uuid
+  name                  String             @db.VarChar(120)
+  keyPrefix             String             @map("key_prefix") @db.VarChar(16)
+  keyHash               String             @map("key_hash")
+  status                ApiKeyStatus       @default(ACTIVE)
+  scopes                Json?
+  lastUsedAt            DateTime?          @map("last_used_at") @db.Timestamptz(3)
+  expiresAt             DateTime?          @map("expires_at") @db.Timestamptz(3)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  revokedAt             DateTime?          @map("revoked_at") @db.Timestamptz(3)
+  deletedAt             DateTime?          @map("deleted_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, name])
+  @@unique([keyPrefix], map: "api_keys_key_prefix_key")
+  @@index([tenantId, status])
+  @@index([tenantId, keyPrefix])
+  @@index([tenantId, deletedAt])
+  @@map("api_keys")
+}
