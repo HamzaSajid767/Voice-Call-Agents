@@ -1,0 +1,19 @@
+FROM node:20-bookworm-slim
+
+WORKDIR /app
+
+# Prisma on Debian slim benefits from openssl being present.
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# Source code is bind-mounted in docker-compose.dev.yml for hot reload.
+
+EXPOSE 3010
+
+CMD ["sh", "-c", "npx prisma generate && npm run dev:ts"]
+
